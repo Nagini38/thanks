@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Accès sécurisé</title>
+  <style>
+    :root {
+      --bg: #05060a;
+      --surface: #0f1117;
+      --border: rgba(255,255,255,0.07);
+      --accent: #c8a24a;
+      --text: #e8e6df;
+      --muted: #6f7680;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Helvetica Neue", Arial, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(200,162,74,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,162,74,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .lock-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+    h1 {
+      font-size: 1.2rem;
+      font-weight: 300;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      color: var(--accent);
+    }
+    p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .field {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 16px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .field input:focus { border-color: rgba(200,162,74,0.3); }
+    .field input::placeholder { color: #3a3e46; }
+    .btn-submit {
+      width: 100%;
+      padding: 13px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-submit:hover { background: #dbb65a; }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error {
+      color: #f87171;
+      font-size: 0.82rem;
+      margin-top: 12px;
+      min-height: 1.2em;
+    }
+    .hint {
+      font-size: 0.72rem;
+      color: #3a3e46;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="lock-icon">🔐</div>
+    <h1>Accès sécurisé</h1>
+    <p>Entrez le mot de passe pour continuer</p>
+    <div class="card">
+      <div class="field">
+        <label>Mot de passe</label>
+        <input type="password" id="passwordInput" placeholder="••••••••" autofocus
+               onkeydown="if(event.key==='Enter') login()">
+      </div>
+      <button class="btn-submit" id="loginBtn" onclick="login()">Déverrouiller</button>
+      <div class="error" id="errorMsg"></div>
+    </div>
+    <div class="hint">Zone sécurisée 🔒</div>
+  </div>
+
+  <script>
+    const HASH = "58cc6181518fbfb49da9c50db08ce31aa92feebaecc6c46a3a8084e87b50f037";
+
+    // Si déjà authentifié, rediriger direct
+    if (sessionStorage.getItem("auth") === "1") {
+      window.location.replace("/");
+    }
+
+    async function login() {
+      const btn = document.getElementById("loginBtn");
+      const input = document.getElementById("passwordInput");
+      const err = document.getElementById("errorMsg");
+      const pw = input.value.trim();
+
+      if (!pw) { err.textContent = "Entrez un mot de passe"; return; }
+
+      btn.disabled = true;
+      btn.textContent = "⏳ Vérification…";
+      err.textContent = "";
+
+      // Hasher en SHA-256
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest("SHA-256", enc.encode(pw));
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      if (hash === HASH) {
+        sessionStorage.setItem("auth", "1");
+        window.location.replace("/");
+      } else {
+        err.textContent = "Mot de passe incorrect";
+        btn.disabled = false;
+        btn.textContent = "Déverrouiller";
+        input.value = "";
+        input.focus();
+      }
+    }
+  </script>
+</body>
+</html>
