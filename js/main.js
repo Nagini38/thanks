@@ -43,8 +43,10 @@
         // "assets/02-hall.mp4",
         // "assets/03-couloir.mp4",
         // "assets/04-sas.mp4",
-        "assets/journey.mp4",     // porte blindée (clip actuel)
+        "assets/vault-wall.mp4",  // la porte au fond d'un mur de béton (on arrive devant)
+        "assets/journey.mp4",     // la caméra s'approche de la porte blindée circulaire
         // "assets/06-cave.mp4",
+        // Pour inverser deux clips : échange simplement leurs lignes ci-dessus.
       ],
     },
   };
