@@ -15,8 +15,9 @@
   const CONFIG = {
     // "procedural" : décor dessiné (placeholder, par défaut)
     // "frames"     : séquence d'images (le plus fluide) -> voir frames/
-    // "video"      : une vidéo scrubbée -> voir assets/
-    mode: "video",
+    // "video"      : une seule vidéo scrubbée -> voir assets/
+    // "clips"      : plusieurs vidéos raccordées par fondu enchaîné
+    mode: "clips",
 
     scrollLengthVh: 360,   // longueur de l'expérience (doit = #scrolltrack dans le CSS)
     smoothing: 0.12,       // 0 = brut, 1 = instantané. Plus bas = plus "glissant".
@@ -30,6 +31,21 @@
     // --- mode "video" ---
     video: {
       src: "assets/journey.mp4",
+    },
+
+    // --- mode "clips" : le parcours, dans l'ordre ---
+    // Ajoute simplement les fichiers au fur et à mesure que tu les génères.
+    // Un fondu enchaîné est appliqué automatiquement entre chaque clip.
+    clips: {
+      crossfade: 0.06,            // largeur du fondu à chaque jonction (fraction du clip)
+      list: [
+        // "assets/01-rue.mp4",
+        // "assets/02-hall.mp4",
+        // "assets/03-couloir.mp4",
+        // "assets/04-sas.mp4",
+        "assets/journey.mp4",     // porte blindée (clip actuel)
+        // "assets/06-cave.mp4",
+      ],
     },
   };
 
@@ -69,6 +85,8 @@
     scene = new window.ProceduralScene(canvas);
   }
 
+  const clipStore = { items: [], ctx: null };
+
   // 2) Séquence d'images
   const frameStore = { images: [], loaded: 0, ctx: null };
   if (CONFIG.mode === "frames") {
@@ -106,11 +124,54 @@
     window.addEventListener("click", prime);
   }
 
+  // 4) Clips multiples raccordés par fondu enchaîné
+  if (CONFIG.mode === "clips") {
+    video.style.display = "none";
+    canvas.style.display = "block";
+    clipStore.ctx = canvas.getContext("2d");
+    fitCanvas();
+    const stage = document.getElementById("stage");
+    for (const src of CONFIG.clips.list) {
+      const v = document.createElement("video");
+      v.muted = true;
+      v.setAttribute("playsinline", "");
+      v.playsInline = true;
+      v.preload = "auto";
+      v.src = src;
+      // hors écran mais présent dans le DOM (nécessaire pour le décodage)
+      v.style.cssText = "position:absolute;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;";
+      stage.appendChild(v);
+      v.load();
+      clipStore.items.push(v);
+    }
+    // Longueur de scroll proportionnelle au nombre de clips (min. la valeur configurée)
+    const auto = clipStore.items.length * 200;
+    track.style.height = Math.max(CONFIG.scrollLengthVh, auto) + "vh";
+
+    // Amorçage lecture au 1er geste (fiabilité du seek, notamment iOS)
+    let primedC = false;
+    const primeAll = () => {
+      if (primedC) return;
+      primedC = true;
+      for (const v of clipStore.items) {
+        const pr = v.play();
+        if (pr && pr.then) pr.then(() => v.pause()).catch(() => {});
+      }
+      window.removeEventListener("scroll", primeAll);
+      window.removeEventListener("touchstart", primeAll);
+      window.removeEventListener("click", primeAll);
+    };
+    window.addEventListener("scroll", primeAll, { passive: true });
+    window.addEventListener("touchstart", primeAll, { passive: true });
+    window.addEventListener("click", primeAll);
+  }
+
   function fitCanvas() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(window.innerWidth * dpr);
     canvas.height = Math.round(window.innerHeight * dpr);
-    if (frameStore.ctx) frameStore.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const ctx2d = frameStore.ctx || clipStore.ctx;
+    if (ctx2d) ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function drawFrame(p) {
@@ -135,6 +196,51 @@
       if (Math.abs(video.currentTime - target) > 0.02) {
         video.currentTime = target;
       }
+    }
+  }
+
+  // Positionne un clip à la fraction t (0→1) de sa durée
+  function seekClip(v, t) {
+    if (v.readyState >= 1 && !isNaN(v.duration) && v.duration > 0) {
+      const target = clamp(t) * v.duration;
+      if (Math.abs(v.currentTime - target) > 0.02) v.currentTime = target;
+    }
+  }
+
+  // Dessine un clip en "cover" plein écran, avec une opacité donnée
+  function drawCover(v, alpha) {
+    if (!v || v.readyState < 2 || !v.videoWidth) return;
+    const ctx = clipStore.ctx;
+    const cw = window.innerWidth, ch = window.innerHeight;
+    const scale = Math.max(cw / v.videoWidth, ch / v.videoHeight);
+    const dw = v.videoWidth * scale, dh = v.videoHeight * scale;
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(v, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+
+  function renderClips(p) {
+    const items = clipStore.items;
+    const N = items.length;
+    const ctx = clipStore.ctx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    if (N === 0) return;
+
+    const fade = CONFIG.clips.crossfade;
+    const scaled = p * N;
+    const i = Math.min(N - 1, Math.floor(scaled));
+    const localBase = scaled - i;              // 0→1 dans le clip courant
+
+    // Clip courant, scrubbé par le scroll
+    seekClip(items[i], localBase);
+    drawCover(items[i], 1);
+
+    // Fondu enchaîné vers le clip suivant sur la fin du clip courant
+    if (i < N - 1 && localBase > 1 - fade) {
+      const a = clamp((localBase - (1 - fade)) / fade);
+      seekClip(items[i + 1], 0);               // tête du clip suivant
+      drawCover(items[i + 1], a);
     }
   }
 
@@ -188,6 +294,7 @@
     if (CONFIG.mode === "procedural") scene.render(p);
     else if (CONFIG.mode === "frames") drawFrame(p);
     else if (CONFIG.mode === "video") renderVideo(p);
+    else if (CONFIG.mode === "clips") renderClips(p);
 
     updateOverlays(p);
     requestAnimationFrame(loop);

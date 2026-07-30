@@ -24,7 +24,27 @@ Tout se règle dans **`js/main.js`**, objet `CONFIG.mode` :
 |------|--------------|-----------|
 | `"procedural"` *(défaut)* | décor **placeholder** dessiné en direct dans le navigateur, zéro fichier | rien |
 | `"frames"` | **séquence d'images** — le plus fluide, idéal pour du photoréaliste | des images dans `frames/` |
-| `"video"` | une **vidéo** scrubbée | un `.mp4` dans `assets/` |
+| `"video"` | une **seule vidéo** scrubbée | un `.mp4` dans `assets/` |
+| `"clips"` | **plusieurs vidéos** raccordées par **fondu enchaîné** (idéal clips IA) | des `.mp4` dans `assets/` |
+
+### Mode `"clips"` : ajouter des clips au parcours
+
+Chaque clip occupe une portion du scroll ; un **fondu enchaîné** est appliqué automatiquement
+entre deux clips (aucun montage externe requis — tout se fait dans le navigateur). Il suffit
+de lister les fichiers **dans l'ordre du parcours** dans `js/main.js` → `CONFIG.clips.list` :
+
+```js
+mode: "clips",
+clips: {
+  crossfade: 0.06,               // largeur du fondu (0.04–0.10 en général)
+  list: [
+    "assets/01-rue.mp4",
+    "assets/02-hall.mp4",
+    "assets/journey.mp4",        // porte blindée
+    "assets/06-cave.mp4",
+  ],
+},
+```
 
 ### Brancher ta vraie vidéo ultra-réaliste
 
