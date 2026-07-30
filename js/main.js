@@ -16,9 +16,9 @@
     // "procedural" : décor dessiné (placeholder, par défaut)
     // "frames"     : séquence d'images (le plus fluide) -> voir frames/
     // "video"      : une vidéo scrubbée -> voir assets/
-    mode: "procedural",
+    mode: "video",
 
-    scrollLengthVh: 720,   // longueur de l'expérience (doit = #scrolltrack dans le CSS)
+    scrollLengthVh: 360,   // longueur de l'expérience (doit = #scrolltrack dans le CSS)
     smoothing: 0.12,       // 0 = brut, 1 = instantané. Plus bas = plus "glissant".
 
     // --- mode "frames" ---
@@ -87,6 +87,23 @@
     video.style.display = "block";
     canvas.style.display = "none";
     video.src = CONFIG.video.src;
+    video.load();
+    // Amorçage : certains navigateurs (iOS) n'affichent pas les "seek"
+    // tant que la vidéo n'a pas été jouée une fois. On la lance en muet
+    // puis on la met en pause au premier geste utilisateur.
+    let primed = false;
+    const prime = () => {
+      if (primed) return;
+      primed = true;
+      const pr = video.play();
+      if (pr && pr.then) pr.then(() => video.pause()).catch(() => {});
+      window.removeEventListener("scroll", prime);
+      window.removeEventListener("touchstart", prime);
+      window.removeEventListener("click", prime);
+    };
+    window.addEventListener("scroll", prime, { passive: true, once: false });
+    window.addEventListener("touchstart", prime, { passive: true });
+    window.addEventListener("click", prime);
   }
 
   function fitCanvas() {
