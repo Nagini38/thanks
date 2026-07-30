@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Accès sécurisé — L'entrée</title>
+  <meta name="description" content="Une expérience immersive : plus vous descendez, plus vous pénétrez dans la pièce sécurisée." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Écran de rendu (fixe) : le décor scrubbé par le scroll -->
+  <div id="stage" aria-hidden="true">
+    <canvas id="scene"></canvas>
+    <!-- Vidéo utilisée uniquement en mode "video" (masquée sinon) -->
+    <video id="scrubVideo" playsinline muted preload="auto"></video>
+
+    <!-- Grain + vignette d'ambiance -->
+    <div class="overlay-grain"></div>
+    <div class="overlay-vignette"></div>
+
+    <!-- HUD : volant de porte blindée qui tourne selon le scroll -->
+    <svg id="vaultHud" class="vault-hud" viewBox="0 0 200 200" aria-hidden="true">
+      <g class="vault-ring">
+        <circle cx="100" cy="100" r="92" class="vh-rim" />
+        <circle cx="100" cy="100" r="78" class="vh-rim2" />
+      </g>
+      <g id="vaultWheel" class="vault-wheel">
+        <circle cx="100" cy="100" r="60" class="vh-hub" />
+        <circle cx="100" cy="100" r="14" class="vh-center" />
+        <!-- rayons du volant -->
+        <g class="vh-spokes">
+          <rect x="96" y="18"  width="8" height="164" rx="4" />
+          <rect x="96" y="18"  width="8" height="164" rx="4" transform="rotate(60 100 100)" />
+          <rect x="96" y="18"  width="8" height="164" rx="4" transform="rotate(120 100 100)" />
+        </g>
+        <circle cx="100" cy="26" r="9" class="vh-knob" />
+      </g>
+    </svg>
+
+    <!-- Barre de progression / profondeur -->
+    <div class="depth-meter" aria-hidden="true">
+      <span class="depth-label" id="depthLabel">RUE — NIVEAU 0</span>
+      <div class="depth-track"><div class="depth-fill" id="depthFill"></div></div>
+    </div>
+
+    <!-- Indice de scroll au tout début -->
+    <div class="scroll-hint" id="scrollHint">
+      <span>Descendez</span>
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 4v14M6 12l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+
+  <!-- Textes narratifs : apparaissent/disparaissent selon la position de scroll.
+       data-at = position (0→1) où le bloc est au centre. -->
+  <div id="captions">
+    <section class="caption" data-at="0.05" data-side="center">
+      <h1>L'entrée</h1>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vous êtes dans la rue, devant le bâtiment. Descendez pour entrer.</p>
+    </section>
+
+    <section class="caption" data-at="0.20" data-side="left">
+      <h2>Le hall</h2>
+      <p>Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Les portes se referment derrière vous.</p>
+    </section>
+
+    <section class="caption" data-at="0.38" data-side="right">
+      <h2>Le couloir</h2>
+      <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+    </section>
+
+    <section class="caption" data-at="0.55" data-side="left">
+      <h2>Zone contrôlée</h2>
+      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum. Badge requis. Caméras actives.</p>
+    </section>
+
+    <section class="caption" data-at="0.72" data-side="center">
+      <h2>La porte blindée</h2>
+      <p>Excepteur sint occaecat cupidatat non proident. Le volant tourne. Les verrous se libèrent un à un.</p>
+    </section>
+
+    <section class="caption" data-at="0.88" data-side="center">
+      <h2>La cave</h2>
+      <p>Sunt in culpa qui officia deserunt mollit anim id est laborum. L'obscurité vous enveloppe.</p>
+    </section>
+
+    <section class="caption final" data-at="0.985" data-side="center">
+      <h2 class="thanks-title">Merci.</h2>
+      <p>Lorem ipsum — un mot de remerciement s'affiche ici, tout au fond du coffre.</p>
+    </section>
+  </div>
+
+  <!-- Piste de scroll : sa hauteur définit la longueur de l'expérience -->
+  <div id="scrolltrack"></div>
+
+  <script src="js/scene.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

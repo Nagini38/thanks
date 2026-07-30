@@ -1,0 +1,11 @@
+# Système
+.DS_Store
+Thumbs.db
+
+# Éditeurs
+.vscode/
+.idea/
+
+# Gros médias optionnels (décommente si tu ne veux pas versionner ta vidéo)
+# assets/*.mp4
+# frames/*.jpg
