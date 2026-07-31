@@ -17,10 +17,10 @@
     // "frames"     : séquence d'images (le plus fluide) -> voir frames/
     // "video"      : une seule vidéo scrubbée -> voir assets/
     // "clips"      : plusieurs vidéos raccordées par fondu enchaîné
-    mode: "clips",
+    mode: "video",
 
     scrollLengthVh: 360,   // longueur de l'expérience (doit = #scrolltrack dans le CSS)
-    smoothing: 0.12,       // 0 = brut, 1 = instantané. Plus bas = plus "glissant".
+    smoothing: 0.25,       // 0 = brut, 1 = instantané. Plus bas = plus "glissant".
 
     // --- mode "frames" ---
     frames: {
@@ -30,7 +30,7 @@
 
     // --- mode "video" ---
     video: {
-      src: "assets/03.mp4",
+      src: "assets/journey.mp4",   // parcours complet (01+02+03 concaténés)
     },
 
     // --- mode "clips" : le parcours, dans l'ordre ---
@@ -189,12 +189,14 @@
   }
 
   function renderVideo(p) {
-    if (video.readyState >= 1 && !isNaN(video.duration)) {
-      const target = p * video.duration;
-      // on ne "seek" que si l'écart est notable (évite le jank)
-      if (Math.abs(video.currentTime - target) > 0.02) {
-        video.currentTime = target;
-      }
+    // Il faut des frames décodées (readyState >= 2) pour un rendu continu.
+    if (video.readyState < 2 || isNaN(video.duration)) return;
+    const target = p * video.duration;
+    // Ne JAMAIS empiler les seeks : si un seek est en cours, on attend la
+    // frame suivante. C'est ce qui évite le jank et l'écran noir.
+    if (video.seeking) return;
+    if (Math.abs(video.currentTime - target) > 0.02) {
+      video.currentTime = target;
     }
   }
 

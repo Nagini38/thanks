@@ -22,9 +22,9 @@ Tout se règle dans **`js/main.js`**, objet `CONFIG.mode` :
 
 | mode | ce que c'est | à fournir |
 |------|--------------|-----------|
-| `"procedural"` *(défaut)* | décor **placeholder** dessiné en direct dans le navigateur, zéro fichier | rien |
+| `"video"` *(défaut)* | **une seule vidéo scrubbée** — mouvement continu, zéro écran noir | `assets/journey.mp4` (parcours concaténé) |
+| `"procedural"` | décor **placeholder** dessiné en direct dans le navigateur, zéro fichier | rien |
 | `"frames"` | **séquence d'images** — le plus fluide, idéal pour du photoréaliste | des images dans `frames/` |
-| `"video"` | une **seule vidéo** scrubbée | un `.mp4` dans `assets/` |
 | `"clips"` | **plusieurs vidéos** raccordées par **fondu enchaîné** (idéal clips IA) | des `.mp4` dans `assets/` |
 
 ### Mode `"clips"` : ajouter des clips au parcours
