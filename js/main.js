@@ -48,28 +48,14 @@
     },
   };
 
-  // Zones affichées dans la jauge de profondeur (bornes en progression)
-  const ZONES = [
-    [0.00, "RUE — NIVEAU 0"],
-    [0.14, "HALL — NIVEAU -1"],
-    [0.32, "COULOIR — NIVEAU -2"],
-    [0.50, "ZONE CONTRÔLÉE — NIVEAU -3"],
-    [0.66, "SAS BLINDÉ — NIVEAU -4"],
-    [0.80, "CAVE — NIVEAU -5"],
-  ];
-
   const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
   // --- Éléments DOM ---
   const canvas = document.getElementById("scene");
   const video = document.getElementById("scrubVideo");
   const track = document.getElementById("scrolltrack");
-  const captions = Array.from(document.querySelectorAll(".caption"));
   const vaultWheel = document.getElementById("vaultWheel");
   const vaultHud = document.getElementById("vaultHud");
-  const depthFill = document.getElementById("depthFill");
-  const depthLabel = document.getElementById("depthLabel");
-  const scrollHint = document.getElementById("scrollHint");
 
   // Longueur de scroll cohérente avec la config
   track.style.height = CONFIG.scrollLengthVh + "vh";
@@ -280,32 +266,10 @@
   }
 
   function updateOverlays(p) {
-    // Textes : opacité selon la distance à leur point d'ancrage
-    for (const el of captions) {
-      const at = parseFloat(el.dataset.at);
-      const d = Math.abs(p - at);
-      const win = el.classList.contains("final") ? 0.14 : 0.075;
-      const o = clamp(1 - d / win);
-      el.style.opacity = o.toFixed(3);
-      const ty = (1 - o) * 24;
-      const side = el.dataset.side;
-      if (side === "center") el.style.transform = `translate(-50%, calc(-50% + ${ty}px))`;
-      else el.style.transform = `translateY(calc(-50% + ${ty}px))`;
-    }
-
     // Volant HUD : tourne proportionnellement au scroll, révélé en zone sécurisée
     vaultWheel.style.transform = `rotate(${p * 1080}deg)`;
     const hudVis = clamp((p - 0.46) / 0.1) * clamp((0.95 - p) / 0.1);
     vaultHud.style.opacity = (hudVis * 0.9).toFixed(3);
-
-    // Jauge de profondeur
-    depthFill.style.width = (p * 100).toFixed(1) + "%";
-    let label = ZONES[0][1];
-    for (const [b, name] of ZONES) if (p >= b) label = name;
-    if (depthLabel.textContent !== label) depthLabel.textContent = label;
-
-    // Indice de scroll : disparaît dès qu'on avance
-    scrollHint.style.opacity = clamp(1 - p / 0.04).toFixed(3);
   }
 
   function loop() {
