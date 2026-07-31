@@ -34,14 +34,12 @@
     },
 
     // --- mode "clips" : le parcours, dans l'ordre ---
-    // Ajoute simplement les fichiers au fur et à mesure que tu les génères.
+    // Rendu "révélation à l'arrêt" : écran noir pendant le défilement, puis
+    // l'image nette apparaît (fondu) uniquement quand on s'arrête de scroller.
+    // -> un seul "seek" par arrêt = aucun clignotement.
     clips: {
-      crossfade: 0.06,            // fondu par défaut (fraction du clip) à chaque jonction
-      // Fondu réglable PAR jonction. crossfades[i] = fondu entre le clip i et i+1.
-      //   0  -> coupure franche (pas de fondu)
-      //   ~0.06 -> fondu enchaîné
-      // Ici : 01->02 coupure franche, 02->03 fondu.
-      crossfades: [0, 0.06],
+      idleMs: 140,                // délai sans scroll avant de révéler l'image
+      fadeSpeed: 0.09,            // vitesse d'apparition de l'image (par frame, 0→1)
       list: [
         "assets/01.mp4",          // porte au fond d'un mur de béton
         "assets/02.mp4",          // clip du milieu
@@ -220,32 +218,39 @@
     ctx.globalAlpha = 1;
   }
 
+  // Rendu "révélation à l'arrêt" : noir pendant le scroll, image au repos.
   function renderClips(p) {
     const items = clipStore.items;
     const N = items.length;
     const ctx = clipStore.ctx;
     if (!ctx) return;
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    const cw = window.innerWidth, ch = window.innerHeight;
+
+    // Fond noir en permanence (base)
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, cw, ch);
     if (N === 0) return;
 
     const scaled = p * N;
     const i = Math.min(N - 1, Math.floor(scaled));
     const localBase = scaled - i;              // 0→1 dans le clip courant
+    const v = items[i];
 
-    // Fondu propre à la jonction i -> i+1 (0 = coupure franche)
-    const cf = CONFIG.clips.crossfades;
-    const fade = (cf && cf[i] != null) ? cf[i] : CONFIG.clips.crossfade;
-
-    // Clip courant, scrubbé par le scroll
-    seekClip(items[i], localBase);
-    drawCover(items[i], 1);
-
-    // Fondu enchaîné vers le clip suivant sur la fin du clip courant
-    if (i < N - 1 && fade > 0 && localBase > 1 - fade) {
-      const a = clamp((localBase - (1 - fade)) / fade);
-      seekClip(items[i + 1], 0);               // tête du clip suivant
-      drawCover(items[i + 1], a);
+    // Pendant le défilement : on reste au noir et on NE "seek" PAS
+    // (c'est le seek continu qui provoquait le clignotement).
+    if (scrolling) {
+      revealAlpha = 0;
+      return;
     }
+
+    // À l'arrêt : on positionne le clip une seule fois, puis on révèle
+    // l'image par un fondu dès que la frame est décodée.
+    seekClip(v, localBase);
+    if (!v.seeking && v.readyState >= 2) {
+      revealAlpha = Math.min(1, revealAlpha + CONFIG.clips.fadeSpeed);
+    }
+    drawCover(v, revealAlpha);
   }
 
   // ============================================================
@@ -254,9 +259,22 @@
   let targetP = 0;
   let currentP = 0;
 
+  // État de défilement (pour le mode "clips" : noir pendant le scroll)
+  let scrolling = false;
+  let scrollTimer = null;
+  let revealAlpha = 0;
+
   function computeTargetP() {
     const max = document.documentElement.scrollHeight - window.innerHeight;
     targetP = max > 0 ? clamp(window.scrollY / max) : 0;
+  }
+
+  function onScroll() {
+    computeTargetP();
+    scrolling = true;
+    revealAlpha = 0;                 // coupe au noir instantanément
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => { scrolling = false; }, CONFIG.clips.idleMs);
   }
 
   function updateOverlays(p) {
@@ -289,16 +307,20 @@
   }
 
   function loop() {
-    // lissage exponentiel vers la cible
-    currentP += (targetP - currentP) * CONFIG.smoothing;
-    if (Math.abs(targetP - currentP) < 0.0002) currentP = targetP;
-
-    const p = clamp(currentP);
-
-    if (CONFIG.mode === "procedural") scene.render(p);
-    else if (CONFIG.mode === "frames") drawFrame(p);
-    else if (CONFIG.mode === "video") renderVideo(p);
-    else if (CONFIG.mode === "clips") renderClips(p);
+    let p;
+    if (CONFIG.mode === "clips") {
+      // Pas de lissage : on suit la position réelle (l'image n'apparaît qu'à l'arrêt)
+      p = clamp(targetP);
+      renderClips(p);
+    } else {
+      // lissage exponentiel vers la cible
+      currentP += (targetP - currentP) * CONFIG.smoothing;
+      if (Math.abs(targetP - currentP) < 0.0002) currentP = targetP;
+      p = clamp(currentP);
+      if (CONFIG.mode === "procedural") scene.render(p);
+      else if (CONFIG.mode === "frames") drawFrame(p);
+      else if (CONFIG.mode === "video") renderVideo(p);
+    }
 
     updateOverlays(p);
     requestAnimationFrame(loop);
@@ -307,7 +329,7 @@
   // ============================================================
   //  Événements
   // ============================================================
-  window.addEventListener("scroll", computeTargetP, { passive: true });
+  window.addEventListener("scroll", onScroll, { passive: true });
   window.addEventListener("resize", () => {
     if (scene) scene.resize();
     else fitCanvas();
