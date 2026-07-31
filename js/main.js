@@ -30,23 +30,22 @@
 
     // --- mode "video" ---
     video: {
-      src: "assets/journey.mp4",
+      src: "assets/03.mp4",
     },
 
     // --- mode "clips" : le parcours, dans l'ordre ---
     // Ajoute simplement les fichiers au fur et à mesure que tu les génères.
-    // Un fondu enchaîné est appliqué automatiquement entre chaque clip.
     clips: {
-      crossfade: 0.06,            // largeur du fondu à chaque jonction (fraction du clip)
+      crossfade: 0.06,            // fondu par défaut (fraction du clip) à chaque jonction
+      // Fondu réglable PAR jonction. crossfades[i] = fondu entre le clip i et i+1.
+      //   0  -> coupure franche (pas de fondu)
+      //   ~0.06 -> fondu enchaîné
+      // Ici : 01->02 coupure franche, 02->03 fondu.
+      crossfades: [0, 0.06],
       list: [
-        // "assets/01-rue.mp4",
-        // "assets/02-hall.mp4",
-        // "assets/03-couloir.mp4",
-        // "assets/04-sas.mp4",
-        "assets/vault-wall.mp4",  // la porte au fond d'un mur de béton (on arrive devant)
-        "assets/journey.mp4",     // la caméra s'approche de la porte blindée circulaire
-        // "assets/06-cave.mp4",
-        // Pour inverser deux clips : échange simplement leurs lignes ci-dessus.
+        "assets/01.mp4",          // porte au fond d'un mur de béton
+        "assets/02.mp4",          // clip du milieu
+        "assets/03.mp4",          // approche de la porte blindée circulaire
       ],
     },
   };
@@ -229,17 +228,20 @@
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     if (N === 0) return;
 
-    const fade = CONFIG.clips.crossfade;
     const scaled = p * N;
     const i = Math.min(N - 1, Math.floor(scaled));
     const localBase = scaled - i;              // 0→1 dans le clip courant
+
+    // Fondu propre à la jonction i -> i+1 (0 = coupure franche)
+    const cf = CONFIG.clips.crossfades;
+    const fade = (cf && cf[i] != null) ? cf[i] : CONFIG.clips.crossfade;
 
     // Clip courant, scrubbé par le scroll
     seekClip(items[i], localBase);
     drawCover(items[i], 1);
 
     // Fondu enchaîné vers le clip suivant sur la fin du clip courant
-    if (i < N - 1 && localBase > 1 - fade) {
+    if (i < N - 1 && fade > 0 && localBase > 1 - fade) {
       const a = clamp((localBase - (1 - fade)) / fade);
       seekClip(items[i + 1], 0);               // tête du clip suivant
       drawCover(items[i + 1], a);
