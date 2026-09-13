@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+  <title>I love you &lt;3</title>
+  <meta name="description" content="Un cœur de mille « love you » qui s'allume, en bleu." />
+  <style>
+    :root {
+      --bg: #000;
+      --ink: #e8e6df;
+      --font: "Helvetica Neue", Arial, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+    body { font-family: var(--font); color: var(--ink); }
+
+    #heart { display: block; width: 100vw; height: 100vh; background: var(--bg); }
+
+    /* Écran d'entrée : un clic est requis pour lancer le son */
+    #enter {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.4rem; text-align: center; cursor: pointer;
+      background: radial-gradient(120% 120% at 50% 45%, #04121f 0%, #000 70%);
+      transition: opacity .8s ease;
+    }
+    #enter.hidden { opacity: 0; pointer-events: none; }
+    #enter h1 {
+      margin: 0; font-weight: 700; letter-spacing: .04em;
+      font-size: clamp(1.6rem, 6vw, 3rem);
+      color: #cfe6ff; text-shadow: 0 0 24px rgba(30,144,255,.55);
+    }
+    #enter p {
+      margin: 0; font-size: clamp(.85rem, 2.6vw, 1.05rem);
+      color: #7fa8d6; letter-spacing: .18em; text-transform: uppercase;
+    }
+    #enter .pulse {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #1e90ff; box-shadow: 0 0 18px 4px rgba(30,144,255,.7);
+      animation: beat 1.1s ease-in-out infinite;
+    }
+    @keyframes beat { 0%,100%{transform:scale(1);opacity:.85} 50%{transform:scale(1.35);opacity:1} }
+  </style>
+</head>
+<body>
+  <canvas id="heart"></canvas>
+
+  <div id="enter">
+    <h1>I&nbsp;love&nbsp;you&nbsp;&lt;3</h1>
+    <div class="pulse"></div>
+    <p>Cliquez pour entrer</p>
+  </div>
+
+  <audio id="song" src="love_you.mp3" preload="auto"></audio>
+
+  <script>
+  /* ============================================================
+     iloveyou.html — port web (canvas) de heart_blue.py
+     Un cœur de particules « love you » en bleu, avec halo,
+     scintillement, puis « Love You » central pulsé + audio.
+     ============================================================ */
+  (function () {
+    "use strict";
+
+    // --- Constantes (miroir du script pygame) ---
+    const SCALE_REF = 20;               // échelle de référence (script pygame)
+    const FPS = 60;
+    const WORDS = ["love you", "Love You", "LOVE YOU"];
+    const CENTER_TEXT = " Love You ";
+    const COLORS = [
+      [70, 130, 180],
+      [30, 144, 255],
+      [0, 191, 255],
+      [100, 149, 237],
+      [65, 105, 225],
+    ];
+
+    const canvas = document.getElementById("heart");
+    const ctx = canvas.getContext("2d");
+
+    // Géométrie adaptative : on garde le ratio du cœur mais on tient dans l'écran.
+    let W, H, SCALE, cx, cy;
+
+    function heartXY(t) {
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      return [x, -y];
+    }
+    function toScreen(x, y) {
+      return [x * SCALE + cx, y * SCALE + cy];
+    }
+
+    // Boîte englobante du cœur en unités de dessin (pour le caler sur l'écran)
+    function heartBounds() {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let i = 0; i <= 720; i++) {
+        const [x, y] = heartXY((i / 720) * Math.PI * 2);
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      return { x0, x1, y0, y1, w: x1 - x0, h: y1 - y0 };
+    }
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    function choice(arr) { return arr[(Math.random() * arr.length) | 0]; }
+
+    function makeParticle(x, y, order, kind) {
+      const [r, g, b] = choice(COLORS);
+      return {
+        x, y, order, kind,
+        word: choice(WORDS),
+        color: `${r},${g},${b}`,
+        alpha: 0,
+        flicker: rand(0, Math.PI * 2),
+        delay: 0,
+        sizeMult: rand(0.85, 1.15),
+        fontPx: kind === "outline" ? 20 : 17,
+      };
+    }
+
+    function buildOutline(nOutline, minGap) {
+      const particles = [], placed = [];
+      for (let i = 0; i < nOutline; i++) {
+        const t = (i / nOutline) * 2 * Math.PI;
+        const [bx, by] = heartXY(t);
+        const [sx, sy] = toScreen(bx, by);
+        let tooClose = false;
+        for (const [px, py] of placed) {
+          if (Math.hypot(sx - px, sy - py) < minGap) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        placed.push([sx, sy]);
+        particles.push(makeParticle(sx, sy, i, "outline"));
+      }
+      return particles;
+    }
+
+    function buildFill(nFill, minGap) {
+      const particles = [], placed = [];
+      let attempts = 0;
+      const maxAttempts = nFill * 80;
+      while (particles.length < nFill && attempts < maxAttempts) {
+        attempts++;
+        const t = rand(0, 2 * Math.PI);
+        const r = rand(0.0, 0.86);
+        const [bx, by] = heartXY(t);
+        const [sx, sy] = toScreen(bx * r, by * r);
+        let tooClose = false;
+        for (const [qx, qy] of placed) {
+          if (Math.hypot(sx - qx, sy - qy) < minGap) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        placed.push([sx, sy]);
+        particles.push(makeParticle(sx, sy, (Math.random() * 321) | 0, "fill"));
+      }
+      return particles;
+    }
+
+    let particles = [];
+    let fillStartFrame = 0;
+    let centerFontPx = 54;
+
+    function build() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const vw = window.innerWidth, vh = window.innerHeight;
+      canvas.width = Math.round(vw * dpr);
+      canvas.height = Math.round(vh * dpr);
+      canvas.style.width = vw + "px";
+      canvas.style.height = vh + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      W = vw; H = vh; cx = vw / 2; cy = vh / 2;
+
+      // Échelle : on dimensionne le CŒUR (et non la zone de référence
+      // 2000x1200) sur l'écran, pour qu'il occupe presque toute la largeur.
+      // Les tailles de police / gaps restent calquées sur SCALE_REF.
+      const hb = heartBounds();
+      const pad = 40;                         // marge : halo + mots qui dépassent
+      SCALE = Math.min((vw - 2 * pad) / hb.w, (vh / 2 - pad) / hb.y1);
+      const k = SCALE / SCALE_REF;            // facteur vs script d'origine
+      const minGapOutline = 30 * k;
+      const minGapFill = 46 * k;
+      centerFontPx = 54 * k;
+
+      const outline = buildOutline(160, minGapOutline);
+      const fill = buildFill(130, minGapFill);
+      for (const p of outline) p.fontPx = 20 * k;
+      for (const p of fill) p.fontPx = 17 * k;
+
+      const outlineSpan = outline.reduce((m, p) => Math.max(m, p.order), 0);
+      const framesPerStep = 1.6;
+      fillStartFrame = Math.floor(outlineSpan * framesPerStep) + 30;
+
+      for (const p of fill) p.delay = fillStartFrame + p.order;
+      for (const p of outline) p.delay = Math.floor(p.order * framesPerStep);
+
+      particles = outline.concat(fill);
+    }
+
+    function drawGlowText(word, colorRGB, x, y, alpha, fontPx) {
+      if (alpha <= 0) return;
+      const a = Math.max(0, Math.min(255, alpha)) / 255;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `bold ${Math.max(1, fontPx).toFixed(1)}px Arial, sans-serif`;
+      if (alpha > 10) {
+        // halo : deux passes floutées via shadowBlur
+        ctx.save();
+        ctx.shadowColor = `rgba(${colorRGB},${a})`;
+        ctx.shadowBlur = fontPx * 1.6;
+        ctx.fillStyle = `rgba(${colorRGB},${a * 0.5})`;
+        ctx.fillText(word, x, y);
+        ctx.shadowBlur = fontPx * 0.9;
+        ctx.fillStyle = `rgba(${colorRGB},${a * 0.9})`;
+        ctx.fillText(word, x, y);
+        ctx.restore();
+      }
+      ctx.fillStyle = `rgba(${colorRGB},${a})`;
+      ctx.fillText(word, x, y);
+    }
+
+    let frame = 0;
+    let running = false;
+
+    function loop() {
+      if (!running) return;
+      frame++;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, W, H);
+
+      for (const p of particles) {
+        if (frame > p.delay && p.alpha < 255) {
+          p.alpha = Math.min(255, p.alpha + 14 + ((Math.random() * 5) | 0));
+        }
+        let flick = 1.0;
+        if (p.alpha >= 255) flick = 0.75 + 0.25 * Math.sin(frame * 0.04 + p.flicker);
+        const alpha = p.alpha * flick;
+        if (alpha <= 0) continue;
+        drawGlowText(p.word, p.color, p.x, p.y, alpha, p.fontPx * p.sizeMult);
+      }
+
+      // « Love You » central, apparition + pulsation douce
+      const centerStart = fillStartFrame + 200;
+      if (frame > centerStart) {
+        const progress = Math.min(1.0, (frame - centerStart) / 60);
+        const centerAlpha = (1 - Math.exp(-progress * 8));
+        const pulse = 1.0 + 0.025 * Math.sin(frame * 0.05);
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `bold ${(centerFontPx * pulse).toFixed(1)}px Georgia, serif`;
+        ctx.shadowColor = `rgba(255,250,245,${centerAlpha * 0.6})`;
+        ctx.shadowBlur = centerFontPx * 0.9;
+        ctx.fillStyle = `rgba(255,250,245,${centerAlpha})`;
+        ctx.fillText(CENTER_TEXT, cx, cy);
+        ctx.restore();
+      }
+
+      setTimeout(() => requestAnimationFrame(loop), 1000 / FPS);
+    }
+
+    function start() {
+      build();
+      frame = 0;
+      running = true;
+      const song = document.getElementById("song");
+      song.currentTime = 0;
+      song.play().catch(() => {});
+      // relance en boucle le morceau tant que la page est ouverte
+      song.loop = true;
+      requestAnimationFrame(loop);
+    }
+
+    const enter = document.getElementById("enter");
+    enter.addEventListener("click", () => {
+      enter.classList.add("hidden");
+      start();
+    });
+
+    // Rebâtir la géométrie au redimensionnement (en repartant proprement)
+    let resizeTO;
+    window.addEventListener("resize", () => {
+      if (!running) return;
+      clearTimeout(resizeTO);
+      resizeTO = setTimeout(() => { build(); frame = 0; }, 150);
+    });
+  })();
+  </script>
+</body>
+</html>
