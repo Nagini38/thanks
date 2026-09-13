@@ -244,6 +244,75 @@
       return Math.exp(-dtb * 8.5) * accent;
     }
 
+    /* ---------- 2) on plonge dans le cœur : TOUS ses mots filent vers la caméra ---------- */
+    let centerZ = 1;
+    let warpZ = 1;
+
+    function initWarp() {
+      for (const p of particles) {
+        p.z = rand(TUN_END + 0.05, 1.0);
+        p.wz = rand(0.7, 1.45);
+        p.wrot = rand(-0.05, 0.05);
+        p.wx = p.x - cx;
+        p.wy = p.y - cy;
+      }
+      centerZ = 1;
+      warpZ = 1;
+    }
+
+    function drawFast(word, col, x, y, a, fontPx) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `bold ${Math.max(1, fontPx).toFixed(1)}px Arial, sans-serif`;
+      ctx.fillStyle = `rgba(${col},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+      ctx.fillText(word, x, y);
+    }
+
+    function drawWarp(dt, tt, fade, speedMul) {
+      const prog = Math.min(1, tt / DIVE);
+      const speed = (0.40 + 2.2 * prog * prog) * speedMul;
+      const maxF = Math.max(W, H) * 0.26;
+      let zsum = 0;
+      for (const p of particles) {
+        p.z -= speed * p.wz * dt;
+        if (p.z <= TUN_END) {                    // passé derrière la caméra : il repart au fond
+          p.z = 1.0;
+          p.wz = rand(0.7, 1.45);
+          p.wrot = rand(-0.05, 0.05);
+        }
+        zsum += p.z;
+        const kk = 1 / p.z;
+        let dx = p.wx, dy = p.wy;
+        if (p.wrot) {
+          const rot = p.wrot * (1 - p.z) * 5;    // léger vrillage du tunnel
+          const c = Math.cos(rot), sn = Math.sin(rot);
+          const nx = dx * c - dy * sn, ny = dx * sn + dy * c;
+          dx = nx; dy = ny;
+        }
+        const near = Math.min(1, (p.z - TUN_END) / 0.09);
+        const a = near * fade * (0.32 + 0.68 * (1 - p.z));
+        if (a <= 0.012) continue;
+        drawFast(p.word, p.color, cx + dx * kk, cy + dy * kk, a * 0.95, Math.min(p.fontPx * p.sizeMult * kk, maxF));
+      }
+      warpZ = zsum / (particles.length || 1);
+      // le « Love You » central grossit puis passe devant la caméra et s'efface
+      centerZ -= speed * 0.42 * dt;
+      if (centerZ > TUN_END) {
+        const a = Math.min(1, (centerZ - TUN_END) / 0.14) * fade;
+        if (a > 0.01) {
+          ctx.save();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.font = `bold ${Math.min(centerFontPx / centerZ, maxF * 1.6).toFixed(1)}px Georgia, serif`;
+          ctx.shadowColor = `rgba(255,250,245,${(a * 0.6).toFixed(3)})`;
+          ctx.shadowBlur = 30;
+          ctx.fillStyle = `rgba(255,250,245,${a.toFixed(3)})`;
+          ctx.fillText(CENTER_TEXT, cx, cy);
+          ctx.restore();
+        }
+      }
+    }
+
     /* ---------- 2) le tunnel de mots ---------- */
     let tunnel = [];
     function initTunnel() {
@@ -257,7 +326,7 @@
           ang: (i % SECT) * (Math.PI * 2 / SECT) + rand(-0.08, 0.08),
           rad: rand(0.5, 1.2),
           z: rand(TUN_END + 0.02, 1.05),
-          vs: rand(0.85, 1.15),
+          vs: rand(0.7, 1.45),
           spin: rand(-0.08, 0.08),
           word: choice(WORDS),
           col: `${r},${g},${b}`,
@@ -279,7 +348,7 @@
         if (w.z <= TUN_END) {                  // le mot est passé : il repart au fond
           w.z = 1.05;
           w.rad = rand(0.5, 1.2);
-          w.vs = rand(0.85, 1.15);
+          w.vs = rand(0.7, 1.45);
         }
         const kk = 1 / w.z;
         w.rad += (w.spin > 0 ? 0.02 : -0.02) * dt;
@@ -455,29 +524,13 @@
         if (frame > centerStart + 100) {          // le cœur est complet → on plonge
           phase = "tunnel";
           phaseT = 0;
+          initWarp();
           initTunnel();
         }
       } else if (phase === "tunnel") {
-        const out = Math.min(1, phaseT / 1.0);
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, 1 - out * 1.2);
-        const z = 1 + 0.85 * out;                 // le cœur grossit : on s'enfonce dedans
-        ctx.translate(cx, cy);
-        ctx.scale(z, z);
-        ctx.translate(-cx, -cy);
-        drawParticles();
-        if (ctx.globalAlpha > 0.05) {
-          const pulse = 1.0 + 0.05 * th;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.font = `bold ${(centerFontPx * pulse).toFixed(1)}px Georgia, serif`;
-          ctx.shadowColor = "rgba(255,250,245,0.6)";
-          ctx.shadowBlur = centerFontPx * 0.9;
-          ctx.fillStyle = "rgba(255,250,245,1)";
-          ctx.fillText(CENTER_TEXT, cx, cy);
-        }
-        ctx.restore();
-        drawTunnel(dt, phaseT, Math.min(1, phaseT / 0.45), 1);
+        const fade = Math.min(1, phaseT / 0.45);
+        drawWarp(dt, phaseT, fade, 1);
+        drawTunnel(dt, phaseT, fade, 1);
         if (phaseT > DIVE) {
           phase = "heart";
           phaseT = 0;
@@ -496,7 +549,7 @@
         if (phaseT > BOOM) resetToBuild();
       }
 
-      window.__ily = { phase, tt: phaseT, thump: th, parts: particles.length, heart2: heart2.length };
+      window.__ily = { phase, tt: phaseT, thump: th, parts: particles.length, heart2: heart2.length, zMean: phase === "tunnel" ? warpZ : 0 };
     }
 
     function tick() {
