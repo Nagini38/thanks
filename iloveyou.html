@@ -59,8 +59,10 @@
   <script>
   /* ============================================================
      iloveyou.html — port web (canvas) de heart_blue.py
-     Un cœur de particules « love you » en bleu, avec halo,
-     scintillement, puis « Love You » central pulsé + audio.
+     1) le cœur de mots « love you » s'allume
+     2) on plonge dedans : tunnel de mots qui accélère
+     3) un second cœur apparaît, battant sur le tempo du morceau
+     4) il explose, puis tout recommence
      ============================================================ */
   (function () {
     "use strict";
@@ -78,10 +80,18 @@
       [65, 105, 225],
     ];
 
+    // --- Tempo de love_you.mp3 (mesuré sur le fichier : onsets + autocorrélation) ---
+    const BEAT = 0.5592;                // 107,3 BPM
+    const BEAT0 = 0.432;                // premier temps du morceau
+    const SONG_LEN = 18.126;            // durée du morceau (joué en boucle)
+    const DIVE = 4.6;                   // durée du tunnel (s)
+    const TUN_END = 0.24;               // profondeur à laquelle un mot est "passé"
+    const HOLD = 7.0;                   // durée du cœur qui bat (s)
+    const BOOM = 2.8;                   // durée de l'explosion (s)
+
     const canvas = document.getElementById("heart");
     const ctx = canvas.getContext("2d");
 
-    // Géométrie adaptative : on garde le ratio du cœur mais on tient dans l'écran.
     let W, H, SCALE, cx, cy;
 
     function heartXY(t) {
@@ -118,6 +128,7 @@
         alpha: 0,
         flicker: rand(0, Math.PI * 2),
         delay: 0,
+        delayT: 0,
         sizeMult: rand(0.85, 1.15),
         fontPx: kind === "outline" ? 20 : 17,
       };
@@ -209,7 +220,6 @@
       ctx.textBaseline = "middle";
       ctx.font = `bold ${Math.max(1, fontPx).toFixed(1)}px Arial, sans-serif`;
       if (alpha > 10) {
-        // halo : deux passes floutées via shadowBlur
         ctx.save();
         ctx.shadowColor = `rgba(${colorRGB},${a})`;
         ctx.shadowBlur = fontPx * 1.6;
@@ -224,57 +234,292 @@
       ctx.fillText(word, x, y);
     }
 
+    /* ---------- rythme : pulsation calée sur le morceau ---------- */
+    function thump(t) {
+      const tm = ((t % SONG_LEN) + SONG_LEN) % SONG_LEN;
+      const k = Math.round((tm - BEAT0) / BEAT);
+      const dtb = tm - (BEAT0 + k * BEAT);
+      if (dtb < 0) return 0;
+      const accent = (((k - 1) % 4) + 4) % 4 === 0 ? 1 : 0.42;
+      return Math.exp(-dtb * 8.5) * accent;
+    }
+
+    /* ---------- 2) le tunnel de mots ---------- */
+    let tunnel = [];
+    function initTunnel() {
+      tunnel = [];
+      // mots alignés en RAYONS qui convergent vers le centre : c'est ce qui
+      // donne la lecture "tunnel" (sinon on obtient juste un nuage de mots).
+      const SECT = 12, PER = 5;
+      for (let i = 0; i < SECT * PER; i++) {
+        const [r, g, b] = choice(COLORS);
+        tunnel.push({
+          ang: (i % SECT) * (Math.PI * 2 / SECT) + rand(-0.08, 0.08),
+          rad: rand(0.5, 1.2),
+          z: rand(TUN_END + 0.02, 1.05),
+          vs: rand(0.85, 1.15),
+          spin: rand(-0.08, 0.08),
+          word: choice(WORDS),
+          col: `${r},${g},${b}`,
+          sizeMult: rand(0.8, 1.25),
+        });
+      }
+    }
+
+    function drawTunnel(dt, tt, fade, speedMul) {
+      if (fade <= 0.01) return;
+      const base = 20 * (SCALE / SCALE_REF);
+      const prog = Math.min(1, tt / DIVE);
+      const speed = (0.40 + 2.2 * prog * prog) * speedMul;   // ça accélère
+      const R = 0.22 * Math.min(W, H);
+      const maxF = Math.max(W, H) * 0.24;
+      for (const w of tunnel) {
+        w.ang += w.spin * dt * 0.6;
+        w.z -= speed * w.vs * dt;
+        if (w.z <= TUN_END) {                  // le mot est passé : il repart au fond
+          w.z = 1.05;
+          w.rad = rand(0.5, 1.2);
+          w.vs = rand(0.85, 1.15);
+        }
+        const kk = 1 / w.z;
+        w.rad += (w.spin > 0 ? 0.02 : -0.02) * dt;
+        if (w.rad < 0.42) w.rad = 0.42;
+        if (w.rad > 1.25) w.rad = 1.25;
+        const x = cx + Math.cos(w.ang) * w.rad * R * kk;
+        const y = cy + Math.sin(w.ang) * w.rad * R * kk;
+        const far = Math.min(1, (1.06 - w.z) * 2.4);            // apparition au loin
+        const near = Math.min(1, (w.z - TUN_END) / 0.16);       // effacement avant la caméra
+        const haze = 0.38 + 0.62 * Math.pow(1 - w.z, 1.2);      // brume : profondeur
+        const a = Math.min(far, near) * fade * haze;
+        if (a <= 0.012) continue;
+        const fpx = Math.min(base * kk * w.sizeMult, maxF);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `bold ${Math.max(1, fpx).toFixed(1)}px Arial, sans-serif`;
+        ctx.fillStyle = `rgba(${w.col},${(a * 0.92).toFixed(3)})`;
+        ctx.fillText(w.word, x, y);
+      }
+    }
+
+    /* ---------- 3) le second cœur, qui bat ---------- */
+    let heart2 = [];
+
+    function buildHeart2() {
+      const saved = SCALE;
+      SCALE = saved * 0.62;                       // cœur plus petit (au fond du tunnel)
+      const k2 = SCALE / SCALE_REF;
+      const outline = buildOutline(170, 30 * k2);
+      const fill = buildFill(140, 46 * k2);
+      for (const p of outline) p.fontPx = 20 * k2 * 1.3;   // mots un peu plus grands
+      for (const p of fill) p.fontPx = 17 * k2 * 1.3;
+      SCALE = saved;
+
+      heart2 = outline.concat(fill);
+      const span = outline.reduce((m, p) => Math.max(m, p.order), 0);
+      let i = 0;
+      for (const p of outline) p.delayT = 0.25 + (p.order / Math.max(1, span)) * 1.5;
+      for (const p of fill) p.delayT = 1.9 + (i++) * 0.006;
+    }
+
+    function drawHeart2(tt, th) {
+      const appear = Math.min(1, Math.max(0, (tt - 0.15) / 1.1));
+      const scale = (0.88 + 0.12 * appear) * (1 + 0.075 * th);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+      for (const p of heart2) {
+        const t2 = tt - p.delayT;
+        if (t2 <= 0) continue;
+        const a = Math.min(255, t2 * 1100);
+        let flick = 1;
+        if (a >= 255) flick = 0.78 + 0.22 * Math.sin(tt * 2.6 + p.flicker);
+        drawGlowText(p.word, p.color, p.x, p.y, a * flick * (0.85 + 0.45 * th), p.fontPx * p.sizeMult);
+      }
+      ctx.restore();
+    }
+
+    /* ---------- 4) l'explosion ---------- */
+    let boom = null;
+
+    function startBoom() {
+      boom = [];
+      for (const p of heart2) {
+        const dx = p.x - cx, dy = p.y - cy;
+        const d = Math.hypot(dx, dy) || 1;
+        const sp = 170 + Math.random() * 470;
+        boom.push({
+          x: p.x, y: p.y,
+          vx: (dx / d) * sp + rand(-80, 80),
+          vy: (dy / d) * sp + rand(-80, 80),
+          word: p.word, col: p.color,
+          fontPx: p.fontPx * p.sizeMult,
+        });
+      }
+    }
+
+    function drawBoom(dt, tt) {
+      const fade = 1 - Math.min(1, Math.max(0, (tt - 0.35) / (BOOM - 0.75)));
+      for (const b of boom) {
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.vx *= 0.985;
+        b.vy *= 0.985;
+        const a = fade;
+        if (a <= 0.02) continue;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `bold ${Math.max(1, b.fontPx).toFixed(1)}px Arial, sans-serif`;
+        ctx.shadowColor = `rgba(${b.col},${a.toFixed(3)})`;
+        ctx.shadowBlur = Math.max(4, b.fontPx * 1.3);
+        ctx.fillStyle = `rgba(${b.col},${a.toFixed(3)})`;
+        ctx.fillText(b.word, b.x, b.y);
+      }
+      ctx.shadowBlur = 0;
+      if (tt < 0.55) {                            // éclair blanc au moment du boum
+        const f = 1 - tt / 0.55;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.85);
+        g.addColorStop(0, `rgba(200,230,255,${(0.6 * f * f).toFixed(3)})`);
+        g.addColorStop(0.35, `rgba(60,140,255,${(0.3 * f * f).toFixed(3)})`);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    /* ---------- boucle / machine à états ---------- */
     let frame = 0;
     let running = false;
+    let phase = "build";
+    let phaseT = 0;
+    let lastT = 0;
 
-    function loop() {
-      if (!running) return;
-      frame++;
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, W, H);
-
+    function drawParticles() {
       for (const p of particles) {
-        if (frame > p.delay && p.alpha < 255) {
-          p.alpha = Math.min(255, p.alpha + 14 + ((Math.random() * 5) | 0));
-        }
         let flick = 1.0;
         if (p.alpha >= 255) flick = 0.75 + 0.25 * Math.sin(frame * 0.04 + p.flicker);
         const alpha = p.alpha * flick;
         if (alpha <= 0) continue;
         drawGlowText(p.word, p.color, p.x, p.y, alpha, p.fontPx * p.sizeMult);
       }
+    }
 
-      // « Love You » central, apparition + pulsation douce
-      const centerStart = fillStartFrame + 200;
-      if (frame > centerStart) {
-        const progress = Math.min(1.0, (frame - centerStart) / 60);
-        const centerAlpha = (1 - Math.exp(-progress * 8));
-        const pulse = 1.0 + 0.025 * Math.sin(frame * 0.05);
+    function resetToBuild() {
+      build();
+      frame = 0;
+      phase = "build";
+      phaseT = 0;
+      heart2 = [];
+      boom = null;
+      tunnel = [];
+    }
+
+    function loop(now) {
+      if (!running) return;
+      const t = now / 1000;
+      const dt = lastT ? Math.min(0.06, t - lastT) : 0.016;
+      lastT = t;
+      phaseT += dt;
+
+      const song = document.getElementById("song");
+      const th = thump(song.currentTime || 0);
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, W, H);
+
+      if (phase === "build") {
+        frame++;
+        for (const p of particles) {
+          if (frame > p.delay && p.alpha < 255) {
+            p.alpha = Math.min(255, p.alpha + 14 + ((Math.random() * 5) | 0));
+          }
+        }
+        drawParticles();
+
+        const centerStart = fillStartFrame + 200;
+        if (frame > centerStart) {
+          const progress = Math.min(1.0, (frame - centerStart) / 60);
+          const centerAlpha = (1 - Math.exp(-progress * 8));
+          const pulse = 1.0 + 0.025 * Math.sin(frame * 0.05) + 0.05 * th;
+          ctx.save();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.font = `bold ${(centerFontPx * pulse).toFixed(1)}px Georgia, serif`;
+          ctx.shadowColor = `rgba(255,250,245,${(centerAlpha * 0.6).toFixed(3)})`;
+          ctx.shadowBlur = centerFontPx * 0.9;
+          ctx.fillStyle = `rgba(255,250,245,${centerAlpha.toFixed(3)})`;
+          ctx.fillText(CENTER_TEXT, cx, cy);
+          ctx.restore();
+        }
+        if (frame > centerStart + 100) {          // le cœur est complet → on plonge
+          phase = "tunnel";
+          phaseT = 0;
+          initTunnel();
+        }
+      } else if (phase === "tunnel") {
+        const out = Math.min(1, phaseT / 1.0);
         ctx.save();
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = `bold ${(centerFontPx * pulse).toFixed(1)}px Georgia, serif`;
-        ctx.shadowColor = `rgba(255,250,245,${centerAlpha * 0.6})`;
-        ctx.shadowBlur = centerFontPx * 0.9;
-        ctx.fillStyle = `rgba(255,250,245,${centerAlpha})`;
-        ctx.fillText(CENTER_TEXT, cx, cy);
+        ctx.globalAlpha = Math.max(0, 1 - out * 1.2);
+        const z = 1 + 0.85 * out;                 // le cœur grossit : on s'enfonce dedans
+        ctx.translate(cx, cy);
+        ctx.scale(z, z);
+        ctx.translate(-cx, -cy);
+        drawParticles();
+        if (ctx.globalAlpha > 0.05) {
+          const pulse = 1.0 + 0.05 * th;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.font = `bold ${(centerFontPx * pulse).toFixed(1)}px Georgia, serif`;
+          ctx.shadowColor = "rgba(255,250,245,0.6)";
+          ctx.shadowBlur = centerFontPx * 0.9;
+          ctx.fillStyle = "rgba(255,250,245,1)";
+          ctx.fillText(CENTER_TEXT, cx, cy);
+        }
         ctx.restore();
+        drawTunnel(dt, phaseT, Math.min(1, phaseT / 0.45), 1);
+        if (phaseT > DIVE) {
+          phase = "heart";
+          phaseT = 0;
+          buildHeart2();
+        }
+      } else if (phase === "heart") {
+        drawTunnel(dt, DIVE, Math.max(0, 1 - phaseT / 1.1), 0.28);
+        drawHeart2(phaseT, th);
+        if (phaseT > HOLD) {
+          phase = "boom";
+          phaseT = 0;
+          startBoom();
+        }
+      } else {
+        drawBoom(dt, phaseT);
+        if (phaseT > BOOM) resetToBuild();
       }
 
-      setTimeout(() => requestAnimationFrame(loop), 1000 / FPS);
+      window.__ily = { phase, tt: phaseT, thump: th, parts: particles.length, heart2: heart2.length };
+    }
+
+    function tick() {
+      try {
+        loop(performance.now());
+      } catch (e) {
+        window.__ilyErr = String(e && e.message ? e.message : e);
+      }
+      setTimeout(() => requestAnimationFrame(tick), 1000 / FPS);
     }
 
     function start() {
       build();
       frame = 0;
+      phase = "build";
+      phaseT = 0;
+      lastT = 0;
       running = true;
       const song = document.getElementById("song");
       song.currentTime = 0;
-      song.play().catch(() => {});
-      // relance en boucle le morceau tant que la page est ouverte
       song.loop = true;
-      requestAnimationFrame(loop);
+      song.play().catch(() => {});
+      requestAnimationFrame(tick);
     }
 
     const enter = document.getElementById("enter");
@@ -288,7 +533,7 @@
     window.addEventListener("resize", () => {
       if (!running) return;
       clearTimeout(resizeTO);
-      resizeTO = setTimeout(() => { build(); frame = 0; }, 150);
+      resizeTO = setTimeout(() => { resetToBuild(); }, 150);
     });
   })();
   </script>
